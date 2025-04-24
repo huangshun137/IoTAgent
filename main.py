@@ -21,7 +21,7 @@ MSG_UP_TOPIC = f"/devices/{DEVICE_ID}/sys/messages/up"
 MSG_DOWN_TOPIC = f"/devices/{DEVICE_ID}/sys/messages/down"
 
 # PROCESS_NAME = "main1.py"
-TARGET_DIR = "/代码/python/water"
+# TARGET_DIR = "/代码/python/water"
 MAX_BACKUP_COUNT = 3
 
 logger = logging.getLogger(__name__)
@@ -33,6 +33,13 @@ downloader = SecureFileDownloader()
 
 # 程序入口文件
 entry_file = None
+# 绑定的设备信息（设备id、设备运行目录）
+device_info = {
+  "deviceId1111": "devicePath1111",
+  "deviceId2222": "devicePath2222",
+  "deviceId3333": "devicePath3333",
+}
+
 # 下载文件
 downloading = False
 # 停止flag
@@ -64,7 +71,7 @@ def download_file(url, expected_md5):
         "type": "OTA",
         "status": "download success",
         "path": result['path'],
-      "timestamp": time.time()
+        "timestamp": time.time()
       }))
     else:
       print(f"下载失败：{result['message']}")
@@ -296,7 +303,7 @@ def find_and_start_app(target_dir):
     raise f"应用程序启动失败: {str(e)}"
 
 updating = False
-def handle_start_update(params):
+def handle_start_update(params, target_path):
   """处理startUpdate的独立线程函数"""
   global entry_file
   try:
@@ -322,7 +329,7 @@ def handle_start_update(params):
     
     time.sleep(2)  # 等待资源释放
 
-    target_dir = Path(f"{TARGET_DIR}/{params.get('version')}")
+    target_dir = Path(f"{target_path}/{params.get('version')}")
     # 备份资源包
     backup_directory(target_dir)
 
@@ -391,6 +398,7 @@ def on_message(client, userdata, message):
   msg = message.payload.decode()
   params = json.loads(msg)
   # print(f"Received message: {msg}")
+  # TODO 添加agent绑定的不同设备id的处理逻辑
   if message.topic == MSG_DOWN_TOPIC:
     print("Received msg down:", msg)
     # 消息下发逻辑处理
@@ -406,11 +414,20 @@ def on_message(client, userdata, message):
         stop_flag = True
       elif params.get("startUpdate"):
         # 开始升级
+        target_path = params.get("processPath") or device_info.get(DEVICE_ID)
+        if not target_path:
+          print("未找到目标路径")
+          mqtt_manager.safe_publish(MSG_UP_TOPIC, json.dumps({
+            "type": "OTA",
+            "status": "update failed",
+            "error": "未找到目标路径"
+          }))
+          return
         global updating  # 声明使用全局变量
         if not updating:
           updating = True
           # 启动独立线程处理更新，否则会阻塞mqtt消息发布
-          threading.Thread(target=handle_start_update, args=(params,), daemon=True).start()
+          threading.Thread(target=handle_start_update, args=(params,target_path,), daemon=True).start()
 
 # 发送mqtt
 def mqtt_loop():
