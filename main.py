@@ -62,36 +62,39 @@ def download_file(url, expected_md5):
     }))
     # if publish:
     #   publish.wait_for_publish()
-    result = downloader.download(url, expected_md5=expected_md5)
-    if result["status"] == "success":
-      print(f"下载成功：{result['path']}")
-      time.sleep(1) # 延迟1秒，防止1ms内就下载完成
-      # 通知IOT系统下载成功
-      mqtt_manager.safe_publish(MSG_UP_TOPIC, json.dumps({
-        "type": "OTA",
-        "status": "download success",
-        "path": result['path'],
-        "timestamp": time.time()
-      }))
-    else:
-      print(f"下载失败：{result['message']}")
-      time.sleep(1) # 延迟1秒，防止1ms内就下载完成
-      errMsg = result['message']
-      if ("MD5校验失败" in errMsg):
-        print("MD5校验失败")
-        errMsg = "MD5校验失败"
-      elif ("Internal Server Error" in errMsg):
-        print("接口请求失败")
-        errMsg = "接口请求失败"
-      # 通知IOT系统下载失败
-      mqtt_manager.safe_publish(MSG_UP_TOPIC, json.dumps({
-        "type": "OTA",
-        "status": "download failed",
-        "error": errMsg
-      }))
-    time.sleep(1)
-    downloading = False
-    return result.get("path", None)
+    # 下载也要开线程，不然会阻止mqtt消息发布
+    threading.Thread(target=download_file_thread, args=(url,expected_md5,), daemon=True).start()
+    # return result.get("path", None)
+
+def download_file_thread(url,expected_md5):
+  result = downloader.download(url, expected_md5=expected_md5)
+  if result["status"] == "success":
+    print(f"下载成功：{result['path']}")
+    # 通知IOT系统下载成功
+    mqtt_manager.safe_publish(MSG_UP_TOPIC, json.dumps({
+      "type": "OTA",
+      "status": "download success",
+      "path": result['path'],
+      "timestamp": time.time()
+    }))
+  else:
+    print(f"下载失败：{result['message']}")
+    time.sleep(1) # 延迟1秒，防止1ms内就下载完成
+    errMsg = result['message']
+    if ("MD5校验失败" in errMsg):
+      print("MD5校验失败")
+      errMsg = "MD5校验失败"
+    elif ("Internal Server Error" in errMsg):
+      print("接口请求失败")
+      errMsg = "接口请求失败"
+    # 通知IOT系统下载失败
+    mqtt_manager.safe_publish(MSG_UP_TOPIC, json.dumps({
+      "type": "OTA",
+      "status": "download failed",
+      "error": errMsg
+    }))
+  global downloading
+  downloading = False
 
 def check_stop_flag():
   """检查停止标志位"""
@@ -329,7 +332,8 @@ def handle_start_update(params, target_path):
     
     time.sleep(2)  # 等待资源释放
 
-    target_dir = Path(f"{target_path}/{params.get('version')}")
+    file_name = params.get("filename") or Path(zip_path).name or params.get('version')
+    target_dir = Path(f"{target_path}/{file_name}")
     # 备份资源包
     backup_directory(target_dir)
 
