@@ -399,6 +399,9 @@ def handle_start_update(params, target_path):
     updating = False
 # 消息处理
 def on_message(client, userdata, message):
+  global stop_flag
+  global updating
+  global downloading
   msg = message.payload.decode()
   params = json.loads(msg)
   # print(f"Received message: {msg}")
@@ -414,8 +417,15 @@ def on_message(client, userdata, message):
       elif params.get("stop"):
         # 停止升级
         print("设置停止升级")
-        global stop_flag
-        stop_flag = True
+        if updating == False and downloading == False:
+          # 直接停止
+          stop_flag = False
+          mqtt_manager.safe_publish(MSG_UP_TOPIC, json.dumps({
+            "type": "OTA",
+            "status": "update stopped"
+          }))
+        else:
+          stop_flag = True
       elif params.get("startUpdate"):
         # 开始升级
         target_path = params.get("processPath") or device_info.get(DEVICE_ID)
@@ -427,7 +437,6 @@ def on_message(client, userdata, message):
             "error": "未找到目标路径"
           }))
           return
-        global updating  # 声明使用全局变量
         if not updating:
           updating = True
           # 启动独立线程处理更新，否则会阻塞mqtt消息发布
