@@ -16,7 +16,9 @@ from typing import Dict, Set
 from utils.mqtt_manager import MQTTManager
 from utils.downloader import SecureFileDownloader
 
-DEVICE_ID = "67f4e06feb17601896126b35_GONGKONG_MAC"
+import config.constant as constants
+
+DEVICE_ID = constants.DEVICE_ID
 MSG_UP_TOPIC = f"/devices/{DEVICE_ID}/sys/messages/up"
 MSG_DOWN_TOPIC = f"/devices/{DEVICE_ID}/sys/messages/down"
 
@@ -27,7 +29,7 @@ MAX_BACKUP_COUNT = 3
 logger = logging.getLogger(__name__)
 
 # 连接mqtt
-mqtt_manager = MQTTManager("localhost", 1883)
+mqtt_manager = MQTTManager(constants.MQTT_BROKER, 1883)
 # 创建下载器
 downloader = SecureFileDownloader()
 
@@ -291,8 +293,11 @@ def find_and_start_app(target_dir):
   
   try:
     # 启动应用程序
+    order = ["python", str(_entry_file)]
+    if constants.CONDA_ENV_NAME:
+      order = ["conda", "run", "-n", constants.CONDA_ENV_NAME, "python", str(_entry_file)]
     subprocess.Popen(
-      ["python", str(_entry_file)],
+      order,
       cwd=target_dir,
       stdout=subprocess.DEVNULL,
       stderr=subprocess.DEVNULL,
