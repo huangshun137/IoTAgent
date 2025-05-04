@@ -2,3 +2,4 @@ DEVICE_ID = "67f4e06feb17601896126b35_GONGKONG_MAC"
 MQTT_BROKER = "localhost"
 
 CONDA_ENV_NAME = ""
+HTTP_BASE_URL = "http://localhost:5000"
