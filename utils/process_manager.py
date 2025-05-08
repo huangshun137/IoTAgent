@@ -35,34 +35,50 @@ def kill_process(entryName):
 
 def find_and_start_app(target_dir, device_detail):
     """查找并启动应用程序"""
-    # 查找入口文件
-    _entry_file = target_dir / device_detail["entryName"]
+    if device_detail["startCommand"]:
+        # 使用自定义启动命令
+        command_list = device_detail["startCommand"].split()
+        try:
+            subprocess.Popen(
+                command_list,
+                # cwd=target_dir,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            print(f"应用程序已启动: {device_detail['startCommand']}")
+        except Exception as e:
+            logger.error(f"应用程序启动失败: {str(e)}")
+    else:
+        # 使用正常python启动命令
+        # 查找入口文件
+        _entry_file = target_dir / device_detail["entryName"]
 
-    if not _entry_file.exists():
-        raise FileNotFoundError("未找到入口文件")
+        if not _entry_file.exists():
+            raise FileNotFoundError("未找到入口文件")
 
-    try:
-        # 启动应用程序
-        order = ["python", str(_entry_file)]
-        if device_detail["condaEnv"]:
-            order = [
-                "conda",
-                "run",
-                "-n",
-                device_detail["condaEnv"],
-                "python",
-                str(_entry_file),
-            ]
-        subprocess.Popen(
-            order,
-            cwd=target_dir,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
-        )
-        # stdout, stderr = process.communicate()
-        print(f"应用程序已启动: {_entry_file}")
-        # print(stdout)
-    except Exception as e:
-        logger.error(f"应用程序启动失败: {str(e)}")
-        raise f"应用程序启动失败: {str(e)}"
+        try:
+            # 启动应用程序
+            order = ["python", str(_entry_file)]
+            if device_detail["condaEnv"]:
+                order = [
+                    "conda",
+                    "run",
+                    "-n",
+                    device_detail["condaEnv"],
+                    "python",
+                    str(_entry_file),
+                ]
+            subprocess.Popen(
+                order,
+                cwd=target_dir,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            # stdout, stderr = process.communicate()
+            print(f"应用程序已启动: {_entry_file}")
+            # print(stdout)
+        except Exception as e:
+            logger.error(f"应用程序启动失败: {str(e)}")
+            raise f"应用程序启动失败: {str(e)}"

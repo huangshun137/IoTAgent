@@ -1,5 +1,6 @@
 from datetime import datetime
 import shutil
+import subprocess
 import threading
 import time
 import json
@@ -148,6 +149,46 @@ class OTAService:
                 )
                 return
 
+            file_name = (
+                params.get("filename") or Path(zip_path).name or params.get("version")
+            )
+            print(f"正在更新：{file_name}")
+            _target_path = (
+                target_path
+                if target_path.split("/")[-1] == file_name
+                else f"{target_path}/{file_name}"
+            )
+            target_dir = Path(_target_path)
+            print(f"目标目录：{target_dir}")
+
+            if entry_file == "IoTAgent.py":
+                # agent本身进行升级
+                if device_detail["condaEnv"]:
+                    subprocess.Popen(
+                        [
+                            "conda",
+                            "run",
+                            "-n",
+                            device_detail["condaEnv"],
+                            "python",
+                            "../ota_self.py",
+                            "--file",  # 参数前缀（可选）
+                            "IoTAgent/" + zip_path,  # 实际文件路径
+                        ],
+                        cwd=target_dir,
+                    )
+                else:
+                    subprocess.Popen(
+                        [
+                            "python",
+                            "../ota_self.py",
+                            "--file",  # 参数前缀（可选）
+                            "IoTAgent/" + zip_path,  # 实际文件路径
+                        ],
+                        cwd=target_dir,
+                    )
+                return
+
             # 发送开始更新通知
             self.mqtt_manager.safe_publish(
                 device_detail["MSG_UP_TOPIC"],
@@ -161,17 +202,6 @@ class OTAService:
 
             time.sleep(2)  # 等待资源释放
 
-            file_name = (
-                params.get("filename") or Path(zip_path).name or params.get("version")
-            )
-            print(f"正在更新：{file_name}")
-            _target_path = (
-                target_path
-                if target_path.split("/")[-1] == file_name
-                else f"{target_path}/{file_name}"
-            )
-            target_dir = Path(_target_path)
-            print(f"目标目录：{target_dir}")
             # 备份资源包
             self.check_stop_flag(device_detail)
             self.backup_directory(target_dir)

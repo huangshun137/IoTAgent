@@ -53,6 +53,7 @@ def get_agent_bind_devices():
                     "directory": item.get("directory"),
                     "entryName": item.get("entryName"),
                     "condaEnv": item.get("condaEnv"),
+                    "startCommand": item.get("startCommand"),
                     "MSG_UP_TOPIC": (
                         GET_MSG_UP_TOPIC(device_id)
                         if not item.get("isCustomDevice")
@@ -95,6 +96,7 @@ def on_message(client, userdata, message):
                         "directory": params.get("processPath"),
                         "entryName": params.get("entry"),
                         "condaEnv": params.get("condaEnv"),
+                        "startCommand": params.get("startCommand"),
                         "MSG_UP_TOPIC": GET_MSG_UP_TOPIC(DEVICE_ID),
                         "downloading": False,
                         "stop_flag": False,
@@ -186,6 +188,7 @@ def on_message(client, userdata, message):
                     "directory": _agent_device.get("directory"),
                     "entryName": _agent_device.get("entryName"),
                     "condaEnv": _agent_device.get("condaEnv"),
+                    "startCommand": _agent_device.get("startCommand"),
                     "MSG_UP_TOPIC": (
                         GET_MSG_UP_TOPIC(device_sign)
                         if not _agent_device.get("isCustomDevice")
@@ -211,6 +214,7 @@ def on_message(client, userdata, message):
                     device_detail["directory"] = _agent_device.get("directory")
                     device_detail["entryName"] = _agent_device.get("entryName")
                     device_detail["condaEnv"] = _agent_device.get("condaEnv")
+                    device_detail["startCommand"] = _agent_device.get("startCommand")
                     print("更新绑定设备信息:", device_sign)
             elif params.get("type") == "agentDeviceDelete":
                 # 删除绑定设备信息
@@ -234,6 +238,7 @@ def on_message(client, userdata, message):
                 "directory": params.get("directory"),
                 "entryName": params.get("entryName"),
                 "condaEnv": params.get("condaEnv"),
+                "startCommand": params.get("startCommand"),
                 "stop_flag": False,
                 "updating": False,
                 "downloading": False,
