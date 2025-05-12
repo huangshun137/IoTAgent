@@ -7,3 +7,5 @@ pip freeze > requirements.txt
 # 其他人接手项目时，执行下面的命令，安装依赖
 
 pip install -r requirements.txt
+
+# 将ota_self.py文件放在IoTAgent项目同级目录下
