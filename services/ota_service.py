@@ -7,8 +7,9 @@ import json
 from pathlib import Path
 import logging
 
-from config.constant import MAX_BACKUP_COUNT
+from config.constant import AGENT_FILE_PATH, MAX_BACKUP_COUNT, OTA_SELF_FULL_PATH
 from utils import downloader, archive_handler
+from utils.common import get_conda_executable_path
 from utils.process_manager import kill_process, find_and_start_app
 
 logger = logging.getLogger(__name__)
@@ -19,21 +20,6 @@ class OTAService:
         # self.device_manager = device_manager
         self.mqtt_manager = mqtt_manager
         self.downloader = downloader.SecureFileDownloader()
-
-    # def handle_ota_update(self, params: dict, device_detail: dict):
-    #     try:
-    #         self._validate_update_params(params, device_detail)
-    #         self._send_update_start_notification(device_detail)
-    #         self._kill_old_process(device_detail)
-    #         self._perform_update(params, device_detail)
-    #     except Exception as e:
-    #         self._handle_update_error(e, device_detail)
-
-    # def _validate_update_params(self, params: dict, device_detail: dict):
-    #     if not Path(params.get("path")).exists():
-    #         raise FileNotFoundError("OTA package not found")
-    #     if not device_detail.get("directory"):
-    #         raise ValueError("Invalid target directory")
 
     def download_file(self, url, expected_md5, device_detail):
         """下载更新压缩包"""
@@ -161,39 +147,58 @@ class OTAService:
             target_dir = Path(_target_path)
             print(f"目标目录：{target_dir}")
 
-            if entry_file == "IoTAgent.py":
-                # agent本身进行升级
-                if device_detail["condaEnv"]:
-                    subprocess.Popen(
-                        [
-                            "conda",
-                            "run",
-                            "-n",
-                            device_detail["condaEnv"],
-                            "python",
-                            "../ota_self.py",
-                            "--file",  # 参数前缀（可选）
-                            "IoTAgent/" + zip_path,  # 实际文件路径
-                        ],
-                        cwd=target_dir,
-                    )
-                else:
-                    subprocess.Popen(
-                        [
-                            "python",
-                            "../ota_self.py",
-                            "--file",  # 参数前缀（可选）
-                            "IoTAgent/" + zip_path,  # 实际文件路径
-                        ],
-                        cwd=target_dir,
-                    )
-                return
-
             # 发送开始更新通知
             self.mqtt_manager.safe_publish(
                 device_detail["MSG_UP_TOPIC"],
                 json.dumps({"type": "OTA", "status": "start update"}),
             )
+
+            if entry_file == "IoTAgent.py":
+                # agent本身进行升级
+                if device_detail["condaEnv"]:
+                    conda_path = get_conda_executable_path()
+                    if not conda_path:
+                        self.mqtt_manager.safe_publish(
+                            device_detail["MSG_UP_TOPIC"],
+                            json.dumps(
+                                {
+                                    "type": "OTA",
+                                    "status": "update failed",
+                                    "error": "conda环境未找到",
+                                }
+                            ),
+                        )
+                        return
+                    subprocess.Popen(
+                        [
+                            conda_path,
+                            "run",
+                            "-n",
+                            device_detail["condaEnv"],
+                            "python",
+                            OTA_SELF_FULL_PATH,
+                            "--file",  # 参数前缀（可选）
+                            f"{AGENT_FILE_PATH}/{zip_path}",  # 实际文件路径
+                        ],
+                        cwd=target_dir,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        start_new_session=True,
+                    )
+                else:
+                    subprocess.Popen(
+                        [
+                            "python",
+                            OTA_SELF_FULL_PATH,
+                            "--file",  # 参数前缀（可选）
+                            f"{AGENT_FILE_PATH}/{zip_path}",  # 实际文件路径
+                        ],
+                        cwd=target_dir,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        start_new_session=True,
+                    )
+                return
 
             # 终止旧进程
             self.check_stop_flag(device_detail)
