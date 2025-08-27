@@ -12,6 +12,7 @@ import rarfile
 from getmac import get_mac_address
 
 # 配置常量
+PRODUCT_AGENT_ID = "681ac31f6cc0a3de12b5020a"
 MAIN_AGENT_NAME = "IoTAgent.py"
 CURRENT_AGENT_DIR = "/home/rm/Jett/IoTAgent"  # 当前Agent安装目录
 TEMP_DOWNLOAD_DIR = "/home/rm/Jett/tmp/agent_upgrade"  # 临时下载目录
@@ -25,7 +26,7 @@ MQTT_CONFIG = {
     "host": "39.105.185.216",  # MQTT代理地址
     "port": 1883,  # 端口
     "keepalive": 60,  # 心跳间隔
-    "topic": f"/devices/681ac31f6cc0a3de12b5020a_{get_mac_address(interface='eth0')}_agent/sys/messages/up",  # 主题模板
+    "topic": f"/devices/{PRODUCT_AGENT_ID}_{get_mac_address(interface='eth0')}_agent/sys/messages/up",  # 主题模板
     "qos": 1,  # 服务质量等级
     # "retain": False,                  # 是否保留消息
     # "credentials": {                  # 认证信息

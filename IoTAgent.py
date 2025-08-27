@@ -3,6 +3,7 @@ import threading
 import time
 import logging
 from pathlib import Path
+from getmac import get_mac_address
 
 from services.ota_service import OTAService
 from utils.mqtt_manager import MQTTManager
@@ -12,9 +13,12 @@ from utils.process_manager import kill_process, find_and_start_app
 from config.constant import (
     GET_MSG_UP_TOPIC,
     GET_MSG_DOWN_TOPIC,
+    GET_HEARTBEAT_TOPIC,
     DEVICE_ID,
     MQTT_BROKER,
+    MQTT_TMS_BROKER,
     HTTP_BASE_URL,
+    HTTP_TMS_BASE_URL
 )
 
 
@@ -22,8 +26,10 @@ logger = logging.getLogger(__name__)
 
 # 连接mqtt
 mqtt_manager = MQTTManager(MQTT_BROKER, 1883)
+mqtt_tms_manager = MQTTManager(MQTT_TMS_BROKER, 1883)
 # 创建HTTP工具类
 http = HttpTool(retries=3, timeout=5, base_url=HTTP_BASE_URL)
+http_tms = HttpTool(retries=3, timeout=5, base_url=HTTP_TMS_BASE_URL)
 # OTA服务类
 ota_service = OTAService(mqtt_manager)
 
@@ -33,6 +39,40 @@ device_info = {}
 # 是否初始化订阅mqtt主题的标志
 init_subscribe_mqtt_flag = False
 
+# 当前机器人code
+robot_code = None
+# 是否监听心跳
+mqtt_heartbeat_flag = False
+# 记录所有程序心跳时间
+last_heartbeats = {}
+
+def get_robot_code():
+    """获取当前机器人信息"""
+    global robot_code, mqtt_heartbeat_flag
+    try:
+        params = {
+            "robotMac": get_mac_address(interface='eth0'),
+            "pageNum": 1,
+            "pageSize": 10
+        }
+        res = http_tms.get("/robot/list", params=params).json()
+        if res and res.get("code") == 200 and res.get("data") and len(res.get("data").get("list", [])) > 0:
+            robot_info = res.get("data").get("list")[0]
+            robot_code = robot_info.get("robotCode")
+            if robot_code:
+                if mqtt_tms_manager.check_connection():
+                    # 监听机器人运行程序心跳
+                    mqtt_subscribe_heartbeat()
+                    mqtt_heartbeat_flag = True
+                else:
+                    mqtt_heartbeat_flag = False
+    except Exception as e:
+        logger.error(f"获取机器人信息失败: {str(e)}")
+        
+def mqtt_subscribe_heartbeat():
+    """监听程序心跳"""
+    global robot_code
+    mqtt_tms_manager.client.subscribe(GET_HEARTBEAT_TOPIC(robot_code))
 
 def get_agent_bind_devices():
     """获取agent绑定的设备信息"""
@@ -71,6 +111,41 @@ def get_agent_bind_devices():
     except Exception as e:
         logger.error(f"获取设备信息失败: {str(e)}")
 
+def check_heartbeats(timeout = 5):
+    """检查所有程序的心跳"""
+    global last_heartbeats
+    while True:
+        current_time = time.time()
+        programs_to_restart = []
+        
+        # 检查哪些程序心跳超时
+        for program, beat_info in list(last_heartbeats.items()):
+            if current_time - beat_info["timestamp"] > timeout:
+                logger.warning(f"程序 {program} 心跳超时")
+                programs_to_restart.append(beat_info["reload_command"])
+                # 移除超时的程序，避免重复重启
+                del last_heartbeats[program]
+        
+        # 重启超时的程序
+        for program_restart_command in programs_to_restart:
+           find_and_start_app(None, {"startCommand": program_restart_command})
+        
+        time.sleep(10)  # 每10秒检查一次
+
+def on_tms_message(client, userdata, message):
+    global robot_code, last_heartbeats
+    msg = message.payload.decode()
+    params = json.loads(msg)
+    if message.topic == GET_HEARTBEAT_TOPIC(robot_code):
+        # 处理心跳
+        program_name = params.get("program")
+        timestamp = params.get("timestamp")
+        if program_name and timestamp:
+            last_heartbeats[program_name] = {
+                "timestamp": timestamp,
+                "reload_command": params.get("reload_command")
+            }
+            logger.info(f"收到来自 {program_name} 的心跳")
 
 # 消息处理
 def on_message(client, userdata, message):
@@ -266,6 +341,17 @@ def mqtt_loop():
             print("Connection lost, reconnecting...")
             time.sleep(1)
 
+    global mqtt_heartbeat_flag
+    while True:
+        if mqtt_tms_manager.check_connection():
+            if not mqtt_heartbeat_flag:
+                mqtt_subscribe_heartbeat()
+            mqtt_tms_manager.client.on_message = on_tms_message
+            break
+        else:
+            print("Connection lost, reconnecting...")
+            time.sleep(1)
+
     while True:
         try:
             mqtt_manager.client.publish(
@@ -277,13 +363,18 @@ def mqtt_loop():
 
 
 try:
+    get_robot_code()
     get_agent_bind_devices()
     mqtt_thread = threading.Thread(target=mqtt_loop)
     mqtt_thread.daemon = True
     mqtt_thread.start()
+    monitor_thread = threading.Thread(target=check_heartbeats)
+    monitor_thread.daemon = True
+    monitor_thread.start()
     # 保持主线程运行
     while True:
         time.sleep(0.5)
 except KeyboardInterrupt:
     mqtt_manager.stop()
+    mqtt_tms_manager.stop()
     print("程序已安全退出")
